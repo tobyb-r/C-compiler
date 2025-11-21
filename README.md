@@ -1,9 +1,9 @@
 ## C compiler
 
-WIP C compiler. Eventually will be self-hsoted
+WIP C compiler. Eventually will be self-hosted. Targeting subset of C89.
 
 todo:
-- [ ] lexing
+- [x] lexing
 - [ ] parsing
 - [ ] semantic analysis
 - [ ] codegen
