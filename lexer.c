@@ -3,133 +3,72 @@
 #include <stdlib.h>
 #include <string.h>
 
-int doubler(int x) { return x * 2; }
+#include "lexer.h"
+#include "fail.h"
 
-enum Token {
-  IDENT, // identifier
+int line;
+char *file;
 
-  // literals
-  // TODO: float
-  INTEGER,
-  STRING,
-  CHAR,
-
-  // keywords
-  // TODO: continue default do sizeof switch case
-  // TODO: auto static const volatile signed static unsigned extern register 
-  IF,
-  ELSE,
-  FOR,
-  WHILE,
-  GOTO,
-  RETURN,
-  STRUCT,
-  ENUM,
-  UNION,
-
-  // type keywords
-  // INT
-  // CHAR
-  // SHORT
-  // LONG
-  // FLOAT
-  // DOUBLE
-
-  // brackets
-  L_PAREN, // ()
-  R_PAREN,
-  L_BRACE, // {}
-  R_BRACE,
-  L_SQUARE, // []
-  R_SQUARE,
-
-  // operators
-  // TODO: & | && || << >>
-  // TODO: ++ --
-  // TODO: assignment operators
-  STAR, // * can be multiply or pointer type or dereference
-  PLUS,
-  SLASH,
-  MOD,
-  EQUALS, // double ==
-  LT,     // <
-  GT,     // >
-  LTE,    // <=
-  GTE,    // >=
-  NOT,
-  NOTEQUALS,
-  ASSIGN, // single =
-
-  // separators
-  // TODO: ->
-  COMMA,
-  DOT,
-  SEMICOLON,
-  COLON,
-
-  // handling
-  ERR,
-  START,
-  END,
-};
-
-char identifier[256];  // string name of identifier
-char str_literal[256]; // value of string literal
-int int_literal;       // value of numeric literal
-
-char *token_repr[] = {"identifier",
-                      "int-literal",
-                      "string-literal",
-                      "char-literal",
-                      "if",
-                      "else",
-                      "for",
-                      "while",
-                      "goto",
-                      "return",
-                      "struct",
-                      "enum",
-                      "union",
-                      "left-parens",
-                      "right-parens",
-                      "left-brace",
-                      "right-brace",
-                      "left-square-bracket",
-                      "right-square-bracket",
-                      "star",
-                      "plus",
-                      "slash",
-                      "modulus",
-                      "equals",
-                      "less-than",
-                      "greater-than",
-                      "less-than-equals",
-                      "greater-than-equals",
-                      "not",
-                      "not-equals",
-                      "assignment",
-                      "comma",
-                      "dot",
-                      "semicolon",
-                      "colon",
-                      "error-token",
-                      "start",
-                      "end"};
-
-FILE *stream; // current stream
-char *file;   // name of file
-int line;     // line in file
-
-void lex_fail(int no) {
-  printf("Lexing failure on line %d in file %s\n", line, file);
+void fail(int no) {
+  printf("On line %d in file %s\n", line, file);
   exit(no);
 }
 
+char *token_repr[256] = {
+    [L_PAREN] = "left_paren",
+    [R_PAREN] = "right_paren",
+    [L_BRACE] = "left_brace",
+    [R_BRACE] = "right_brace",
+    [L_SQUARE] = "left_square",
+    [R_SQUARE] = "right_square",
+    [ASSIGN] = "assignment",
+    [COMMA] = "comma",
+    [DOT] = "dot",
+    [SEMICOLON] = "semicolon",
+    [COLON] = "colon",
+    [IDENT] = "identifier",
+    [INTEGER] = "int_literal",
+    [STRING] = "string_literal",
+    [CHAR] = "char_literal",
+    [IF] = "if",
+    [ELSE] = "else",
+    [FOR] = "for",
+    [WHILE] = "while",
+    [RETURN] = "return",
+    [BREAK] = "break",
+    [STRUCT] = "struct",
+    [UNION] = "union",
+    [ENUM] = "enum",
+    [TYPEDEF] = "typedef",
+    [INT_TYPE] = "int_type",
+    [CHAR_TYPE] = "char_type",
+    [AMP] = "ampersand",
+    [STAR] = "star",
+    [SLASH] = "slash",
+    [PLUS] = "plus",
+    [MINUS] = "minus",
+    [MOD] = "modulus",
+    [EQ] = "equals",
+    [NE] = "not_equals",
+    [LT] = "less_than",
+    [GT] = "greater_than",
+    [LTE] = "less_than_equals",
+    [GTE] = "greater_than_equals",
+    [NOT] = "not",
+    [OR] = "or",
+    [AND] = "and",
+    [ERR] = "error_token",
+    [START] = "start",
+    [END] = "end",
+};
+
+FILE *stream; // current stream
+
 char cur_char;
-char next_char = -1;
+char next_char;
 
 // setup global so that read_char can be called
-void setup() { next_char = fgetc(stream); }
+void setup_lexer() { next_char = fgetc(stream); }
 
 char read_char() {
   if (cur_char == '\n') {
@@ -138,8 +77,8 @@ char read_char() {
 
   // character really should be ascii
   if (next_char < -1) {
-    printf("Found non-ascii character %c", cur_char);
-    lex_fail(1);
+    printf("Syntax error: found non-ascii character %c", cur_char);
+    fail(1);
   }
 
   cur_char = next_char;
@@ -149,8 +88,8 @@ char read_char() {
 
 void consume(char c) {
   if (cur_char != c) {
-    printf("Tried to consume char '%c', found '%c'\n", c, cur_char);
-    lex_fail(5);
+    printf("Syntax error: expected char '%c', found '%c'\n", c, cur_char);
+    fail(2);
   }
 
   read_char();
@@ -162,9 +101,9 @@ char lexeme[256];
 void read_lexeme() {
   // special character
   if (!isalnum(cur_char) && cur_char != '_') {
-    printf("Tried to read lexeme from non alphanumeric character '%c'\n",
+    printf("Compiler error: Tried to read lexeme from character '%c'\n",
            cur_char);
-    lex_fail(6);
+    fail(3);
   }
 
   memset(lexeme, 0, 256);
@@ -176,17 +115,34 @@ void read_lexeme() {
   }
 }
 
+struct Token cur_token;
+
+struct Token new_tok(enum TokenKind kind) {
+  return (struct Token){.kind = kind};
+}
+
 // characters that are easy to map
 // unspecified characters are 0
-enum Token char_map[127] = {
+enum TokenKind char_map[127] = {
     ['('] = L_PAREN, [')'] = R_PAREN, ['['] = L_SQUARE, [']'] = R_SQUARE,
     ['{'] = L_BRACE, ['}'] = R_BRACE, ['*'] = STAR,     ['+'] = PLUS,
     ['%'] = MOD,     [','] = COMMA,   ['.'] = DOT,      [';'] = SEMICOLON,
     [':'] = COLON,
 };
 
+// mappings from keywords to tokens
+struct {
+  enum TokenKind token;
+  char *keyword;
+} keywords[] = {
+    {ELSE, "else"},       {FOR, "for"},       {WHILE, "while"},
+    {STRUCT, "struct"},   {ENUM, "enum"},     {UNION, "union"},
+    {TYPEDEF, "typedef"}, {RETURN, "return"}, {INT_TYPE, "int"},
+    {CHAR_TYPE, "char"},
+};
+
 // get next token
-enum Token read_token() {
+struct Token get_token() {
   read_char();
 
   while (isspace(cur_char)) {
@@ -194,73 +150,64 @@ enum Token read_token() {
   }
 
   if (char_map[cur_char] != 0) {
-    return char_map[cur_char];
+    return new_tok(char_map[cur_char]);
   }
 
   // check what lexeme is and emit token
   if (isdigit(cur_char)) {
     read_lexeme();
 
-    // TODO: hex & octal
     // TODO: float
 
     for (int i = 1; lexeme[i] != '\0'; i++) {
       if (!isdigit(lexeme[i])) {
-        printf("Unexpected character '%c' in int literal %s\n", lexeme[i],
-               lexeme);
-        lex_fail(3);
+        printf("Syntax error: unexpected character '%c' in int literal %s\n",
+               lexeme[i], lexeme);
+        fail(4);
       }
     }
 
-    int_literal = atoi(lexeme);
+    struct Token token = new_tok(INTEGER);
+    token.int_literal = atoi(lexeme);
 
-    return INTEGER;
+    return token;
   } else if (isalpha(cur_char) || cur_char == '_') {
     read_lexeme();
 
-    // identifier or keyword
-    if (!strcmp(lexeme, "if")) {
-      return IF;
-    } else if (!strcmp(lexeme, "else")) {
-      return ELSE;
-    } else if (!strcmp(lexeme, "for")) {
-      return FOR;
-    } else if (!strcmp(lexeme, "while")) {
-      return WHILE;
-    } else if (!strcmp(lexeme, "goto")) {
-      return GOTO;
-    } else if (!strcmp(lexeme, "struct")) {
-      return STRUCT;
-    } else if (!strcmp(lexeme, "enum")) {
-      return ENUM;
-    } else if (!strcmp(lexeme, "union")) {
-      return UNION;
-    } else if (!strcmp(lexeme, "return")) {
-      return RETURN;
-    } else {
-      strcpy(identifier, lexeme);
-      return IDENT;
+    // keyword or identifier
+
+    for (int i = 0; i < (sizeof(keywords) / sizeof(keywords[0])); i++) {
+      if (!strcmp(lexeme, keywords[i].keyword)) {
+        return new_tok(keywords[i].token);
+      }
     }
+
+    // didn't match any keywords
+    struct Token token = new_tok(IDENT);
+    strcpy(token.identifier, lexeme);
+    return token;
   } else if (cur_char == '/') {
     if (next_char == '/') {
       // comment - ignore until newline
+      // TODO: multiline comments
 
       while (cur_char != '\n') {
         read_char();
       }
 
-      return read_token();
+      return get_token();
     } else {
-      return SLASH;
+      return new_tok(SLASH);
     }
   } else if (cur_char == '#') {
     // TODO: handle preprocessing at this stage
-    
+    // just ignore macros
+
     while (cur_char != '\n') {
       read_char();
     }
 
-    return read_token();
+    return get_token();
 
     // will work smth like this
     consume('#');
@@ -274,57 +221,73 @@ enum Token read_token() {
     }
   } else if (cur_char == '\'') {
     if (read_char() == '\\') {
-      // TODO - handle properly
+      // TODO: handle properly
       consume('\\');
     }
 
-    memset(str_literal, 0, 256);
-    str_literal[0] = cur_char;
+    struct Token token = new_tok(CHAR);
+    token.str_literal[0] = read_char();
 
-    read_char();
-
-    return CHAR;
+    return token;
   } else if (cur_char == '\"') {
+    struct Token token = new_tok(STRING);
     int len = 0;
 
     while (read_char() != '\"') {
-      str_literal[len++] = cur_char;
+      // TODO: handle properly
+
+      token.str_literal[len++] = cur_char;
     }
 
-    return STRING;
+    return token;
   } else if (cur_char == '=') {
     if (next_char == '=') {
       consume('=');
-      return EQUALS;
+      return new_tok(EQ);
     } else {
-      return ASSIGN;
+      return new_tok(ASSIGN);
     }
   } else if (cur_char == '<') {
     if (next_char == '=') {
       consume('<');
-      return LTE;
+      return new_tok(LTE);
     } else {
-      return LT;
+      return new_tok(LT);
     }
   } else if (cur_char == '>') {
     if (next_char == '=') {
       consume('>');
-      return GTE;
+      return new_tok(GTE);
     } else {
-      return GT;
+      return new_tok(GT);
     }
   } else if (cur_char == '!') {
     if (next_char == '=') {
       consume('!');
-      return NOTEQUALS;
+      return new_tok(NE);
     } else {
-      return NOT;
+      return new_tok(NOT);
     }
   } else if (cur_char == EOF) {
-    return END;
+    return new_tok(END);
   }
 
   printf("Couldn't match char '%c'\n", cur_char);
-  lex_fail(2);
-  return ERR; // unreachable
+  fail(5);
+  return new_tok(ERR);
+}
+
+struct Token read_token() {
+  cur_token = get_token();
+  return cur_token;
+}
+
+void eat_token(enum TokenKind kind) {
+  if (cur_token.kind != kind) {
+    printf("Tried to eat token %s, found %s\n", token_repr[kind],
+           token_repr[cur_token.kind]);
+    fail(6);
+  }
+
+  read_token();
 }

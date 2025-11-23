@@ -1,26 +1,21 @@
-#include "parser.c"
+#include "lexer.h"
+#include "parser.h"
+#include "symbols.h"
+#include "fail.h"
 
-int main(int argc, char** argv) {
+int main(int argc, char **argv) {
   if (argc > 1) {
+    file = argv[1];
     stream = fopen(argv[1], "r");
   } else {
+    file = "STDIN";
     stream = stdin;
   }
 
-  setup();
+  setup_lexer();
 
-  enum Token token;
+  parse();
 
-  while ((token = read_token()) != END) {
-    printf("%s\n", token_repr[token]);
-    if (token == IDENT) {
-      printf("  %s\n", identifier);
-    } else if (token == INTEGER) {
-      printf("  %d\n", int_literal);
-    } else if (token == STRING) {
-      printf("  %s\n", str_literal);
-    } else if (token == CHAR) {
-      printf("  %s\n", str_literal);
-    }
-  }
+  debug_symbols();
 }
+
