@@ -36,4 +36,8 @@ int type_eq(struct Type *l, struct Type *r);
 
 void debug_type(struct Type *type);
 
+struct Type *type_sound(struct Type *type);
+
+void type_verify(struct Type *type);
+
 #endif

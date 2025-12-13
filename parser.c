@@ -8,7 +8,6 @@
 #include "symbols.h"
 #include "types.h"
 
-
 // TODO:
 // statements/expressions
 // have to make global variables and initializers work
@@ -41,9 +40,6 @@ struct Dec match_declarator(struct Type type_) {
   dec.type = type;
 
   match_dec_rec(&dec, &dec.type);
-
-  // TODO: check declarator is semantically ok
-  // arrays/functions return sized types
 
   return dec;
 }
@@ -358,6 +354,7 @@ void match_outer_dec() {
   }
 
   struct Dec dec = match_declarator(type);
+  type_verify(dec.type);
 
   if (dec.identifier == NULL) {
     printf("Syntax error: Outer decleration with no identifier\n");
@@ -388,6 +385,7 @@ void match_outer_dec() {
           continue;
         case '}':
           depth--;
+          continue;
         default:
           continue;
         }
