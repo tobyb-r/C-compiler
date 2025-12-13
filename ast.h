@@ -88,12 +88,4 @@ struct BlockStmt {
   struct BlockStmt *next;
 };
 
-// TODO: handle global vars
-struct GlobalVars {
-  struct Var var;
-  void *init; // defaults to 0
-
-  struct GlobalVars *next;
-};
-
 #endif

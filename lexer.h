@@ -44,9 +44,11 @@ enum TokenKind {
   TYPEDEF,
 
   // type keywords
-  // TODO: short/long, float/double
+  // TODO: short/long/double
   INT_TYPE,
   CHAR_TYPE,
+  FLOAT_TYPE,
+  VOID_TYPE,
 
   // operators
   // TODO: & | ^ << >>

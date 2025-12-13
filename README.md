@@ -3,10 +3,14 @@
 WIP C compiler. Eventually will be self-hosted. Targeting subset of C89.
 
 todo:
-- [x] lexing
+- lexing
+  - [-] partial lexer
   - [ ] preprocessor
-- [ ] parsing
-- [ ] semantic analysis
+- parsing
+  - [ ] parsing outer declarations
+  - [ ] parsing statements
+- semantic analysis
   - [ ] type checking
-- [ ] intermediate code
-- [ ] codegen
+- intermediate code
+- codegen
+- optimizations
