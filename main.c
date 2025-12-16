@@ -1,10 +1,10 @@
+#include "fail.h"
 #include "lexer.h"
 #include "parser.h"
 #include "symbols.h"
-#include "fail.h"
 
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 int main(int argc, char **argv) {
   if (argc > 1) {
@@ -29,4 +29,3 @@ int main(int argc, char **argv) {
   printf("Token y is: \n  ");
   debug_symbol(lookup_symbol("y"));
 }
-

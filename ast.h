@@ -24,14 +24,12 @@ enum Op {
   O_AND,
 };
 
-
 // function symbol with FuncSig and ast
 struct Func;
 
 struct Expr {
   // TODO: struct/array initializers, constants, field of struct
   enum { E_VAR, E_UNOP, E_BINOP, E_CALL } kind;
-  
 
   union {
     struct Var *var;

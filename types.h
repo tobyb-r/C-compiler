@@ -40,4 +40,8 @@ struct Type *type_sound(struct Type *type);
 
 void type_verify(struct Type *type);
 
+void free_func_sig(struct FuncSig *sig);
+
+void free_type(struct Type *type);
+
 #endif

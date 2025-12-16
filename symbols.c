@@ -92,7 +92,7 @@ void exit_scope() {
 // finds if name is in current scope
 struct Def *find_in_scope(char *name, struct Scope *scope) {
   if (scope == NULL) {
-    FAIL;
+    return NULL;
   }
 
   while (scope->table != NULL) {
@@ -137,16 +137,26 @@ struct Struct *lookup_struct(char *name) {
   return NULL;
 }
 
-struct Symbol *add_symbol(char *name, struct Symbol symbol) {
+// define a new symbol
+// use other functions for defining functions/globals
+// always returns pointer to new symbol
+struct Symbol *add_symbol(char *name) {
   if (symbol_scope) {
     if (find_in_scope(name, symbol_scope)) {
-      printf("Semantic error: Shadowing %s in same scope\n", name);
+      printf("Semantic error: redefining %s in same scope\n", name);
+      FAIL;
+    }
+  } else {
+    struct SymbolTable *table =
+        (void *)find_in_table(name, (void *)symbol_table);
+
+    if (table && table->def) {
+      printf("Semantic error: redefining %s\n", name);
       FAIL;
     }
   }
 
-  struct SDef *def = malloc(sizeof(*def));
-  def->sym = symbol;
+  struct SDef *def = calloc(1, sizeof(*def));
 
   struct SymbolTable *table = (void *)find_in_table(name, (void *)symbol_table);
 
@@ -167,26 +177,76 @@ struct Symbol *add_symbol(char *name, struct Symbol symbol) {
   return &def->sym;
 }
 
-// may refer to old definition
-// returns ptr to the definition
-struct Struct *add_struct(char *name, struct Struct struct_def) {
-  struct StDef *prev_def = NULL;
-
-  // previous definition it it exists and is valid to complete
-  // if it is in an outer scope we shadow instead of completing
-  if (struct_scope) {
-    prev_def = (void *)find_in_scope(name, struct_scope);
-  }
-
-  if (prev_def) {
-    // TODO: forward definitions
-    printf("Semantic error: Redefining struct %s\n", name);
+// define global
+// can return pointer to incomplete definition
+struct Global *add_global(char *name) {
+  // globals can only be defined outside of scope
+  if (symbol_scope) {
     FAIL;
   }
 
+  struct SymbolTable *table = (void *)find_in_table(name, (void *)symbol_table);
+
+  if (table) {
+    if (table->def && table->def->sym.kind == S_GLOBAL) {
+      // if (table->def->sym.global->complete) {
+      //   printf("Semantic error: redefining global %s\n", name);
+      //   FAIL;
+      // }
+
+      return table->def->sym.global;
+    } else {
+      printf("Semantic error: redefining symbol %s as global\n", name);
+    }
+  }
+
+  struct SDef *def = malloc(sizeof(*def));
+  def->next = NULL;
+  def->sym.kind = S_GLOBAL;
+  def->sym.global = calloc(1, sizeof(*def->sym.global));
+
+  table = malloc(sizeof(*table));
+  table->name = malloc(strlen(name) + 1);
+  strcpy(table->name, name);
+  table->def = def;
+  table->next = symbol_table;
+  symbol_table = table;
+
+  return def->sym.global;
+}
+
+// define a new struct
+// can return pointer to incomplete definition
+struct Struct *add_struct(char *name) {
+  // previous definition if it exists
+  // if it is in an outer scope we shadow instead of completing
+  struct StDef *prev_def = NULL;
+
+  if (struct_scope) {
+    prev_def = (void *)find_in_scope(name, struct_scope);
+  } else {
+    if (struct_table) {
+      struct Table *table = find_in_table(name, (void *)struct_table);
+
+      if (table) {
+        prev_def = (void *)table->def;
+      }
+    }
+  }
+
+  if (prev_def) {
+    // if (prev_def->struc->complete) {
+    //   printf("Semantic error: redefining struct %s\n", name);
+    //   FAIL;
+    // }
+
+    return prev_def->struc;
+  }
+
   struct StDef *def = malloc(sizeof(*def));
-  def->struc = malloc(sizeof(struct Struct));
-  *def->struc = struct_def;
+  def->struc = calloc(1, sizeof(*def->struc));
+  def->struc->name = malloc(strlen(name) + 1);
+  strcpy(def->struc->name, name);
 
   struct StructTable *table = (void *)find_in_table(name, (void *)struct_table);
 
@@ -207,35 +267,42 @@ struct Struct *add_struct(char *name, struct Struct struct_def) {
   return def->struc;
 }
 
-// may refer to old definition
-// returns ptr to the definition
-struct Func *add_func(char *name, struct Func func) {
+// define a new function
+// can return pointer to incomplete definition
+struct Func *add_func(char *name) {
   // functions can only be defined outside of scope
-  // if the function has a forward definition ret and params must match
   if (symbol_scope) {
     FAIL;
+  }
+
+  struct SymbolTable *table = (void *)find_in_table(name, (void *)symbol_table);
+
+  if (table) {
+    if (table->def && table->def->sym.kind == S_FUNC) {
+      // if (table->def->sym.func->complete) {
+      //   printf("Semantic error: redefining function %s\n", name);
+      //  FAIL;
+      // }
+
+      return table->def->sym.func;
+    } else {
+      printf("Semantic error: redefining symbol %s as function\n", name);
+    }
   }
 
   struct SDef *def = malloc(sizeof(*def));
   def->next = NULL;
   def->sym.kind = S_FUNC;
-  def->sym.func = malloc(sizeof(*def->sym.func));
-  *def->sym.func = func;
+  def->sym.func = calloc(1, sizeof(*def->sym.func));
+  def->sym.func->name = malloc(strlen(name) + 1);
+  strcpy(def->sym.func->name, name);
 
-  struct SymbolTable *table = (void *)find_in_table(name, (void *)symbol_table);
-
-  if (table) {
-    // TODO forward definitions
-    printf("Semantic error: Redefining symbol %s\n", name);
-    FAIL;
-  } else {
-    table = malloc(sizeof(struct Table));
-    table->name = malloc(strlen(name) + 1);
-    strcpy(table->name, name);
-    table->def = def;
-    table->next = symbol_table;
-    symbol_table = table;
-  }
+  table = malloc(sizeof(*table));
+  table->name = malloc(strlen(name) + 1);
+  strcpy(table->name, name);
+  table->def = def;
+  table->next = symbol_table;
+  symbol_table = table;
 
   return def->sym.func;
 }
@@ -312,7 +379,7 @@ void debug_symbols() {
     struct Field *field = (sentry->def->struc)->fields;
 
     while (field != NULL) {
-      printf("  ");
+      printf("    ");
       debug_type(field->type);
 
       if (field->name != NULL) {
@@ -324,7 +391,6 @@ void debug_symbols() {
       field = field->next;
     }
 
-    break;
     sentry = sentry->next;
   }
 }

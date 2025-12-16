@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "fail.h"
@@ -41,17 +42,20 @@ int type_eq(struct Type *l, struct Type *r) {
   case T_FUNC:
     // check return type is same and parameters are same
 
-    if (type_eq(l->func_sig->ret, r->func_sig->ret)) {
-      return 1;
+    if (!type_eq(l->func_sig->ret, r->func_sig->ret)) {
+      return 0;
     }
 
     struct Param *param1 = l->func_sig->params;
     struct Param *param2 = r->func_sig->params;
 
     while (param1 != NULL && param2 != NULL) {
-      if (type_eq(param1->type, param2->type)) {
-        return 1;
+      if (!type_eq(param1->type, param2->type)) {
+        return 0;
       }
+
+      param1 = param1->next;
+      param2 = param2->next;
     }
 
     // check that both are null
@@ -231,5 +235,45 @@ void type_verify(struct Type *type) {
     }
 
     FAIL;
+  }
+}
+
+void free_func_sig(struct FuncSig *sig) {
+  free_type(sig->ret);
+
+  struct Param *param = sig->params;
+
+  while (param != NULL) {
+    struct Param *new = param->next;
+    free(param);
+    param = new;
+  }
+}
+
+void free_type(struct Type *type) {
+  while (type != NULL) {
+    struct Type *old = type;
+
+    switch (type->kind) {
+    case T_POINTER:
+    case T_ARRAY:
+      type = type->ptr_type;
+      break;
+    case T_FUNC:
+      free_func_sig(type->func_sig);
+      type = NULL;
+      break;
+    case T_CHAR:
+    case T_FLOAT:
+    case T_VOID:
+    case T_INT:
+    case T_ENUM:
+    case T_UNION:
+    case T_STRUCT:
+      type = NULL;
+      break;
+    }
+
+    free(old);
   }
 }

@@ -7,7 +7,9 @@ struct Var {
 
 struct Global {
   struct Type *type;
+  int complete;
   // initialization value
+  // struct Expr *expression
 };
 
 struct Enum {
@@ -18,6 +20,7 @@ struct Enum {
 struct Union {
   char *name; // NULL for anonymous union
   struct Field *fields;
+  int complete;
   // size, alignment
 };
 
@@ -25,6 +28,7 @@ struct Union {
 struct Struct {
   char *name; // NULL for anonymous struct
   struct Field *fields;
+  int complete;
   // size, alignment
 };
 
@@ -66,6 +70,7 @@ struct Func {
   char *name;
   struct FuncSig *sig;
   struct BlockStmt *stmt;
+  int complete;
   // stack size, layout
 };
 
@@ -76,9 +81,10 @@ void debug_type(struct Type *type);
 void debug_symbol(struct Symbol *symbol);
 void debug_symbols();
 
-struct Symbol *add_symbol(char *name, struct Symbol symbol);
-struct Struct *add_struct(char *name, struct Struct struct_def);
-struct Func *add_func(char *name, struct Func func);
+struct Symbol *add_symbol(char *name);
+struct Struct *add_struct(char *name);
+struct Func *add_func(char *name);
+struct Global *add_global(char *name);
 
 struct Symbol *lookup_symbol(char *name);
 struct Struct *lookup_struct(char *name);

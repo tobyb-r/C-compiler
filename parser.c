@@ -51,7 +51,7 @@ struct Type **match_dec_rec(struct Dec *dec, struct Type **type) {
 
     type = match_dec_rec(dec, type);
 
-    struct Type *ptr_type = malloc(sizeof(struct Type));
+    struct Type *ptr_type = malloc(sizeof(*ptr_type));
     ptr_type->kind = T_POINTER;
     ptr_type->ptr_type = *type;
 
@@ -100,7 +100,7 @@ struct Type **match_dec_rec(struct Dec *dec, struct Type **type) {
 
       eat_token(']');
 
-      struct Type *arr_type = malloc(sizeof(struct Type));
+      struct Type *arr_type = malloc(sizeof(*arr_type));
 
       arr_type->kind = T_ARRAY;
       arr_type->array.elem_type = *type;
@@ -114,10 +114,10 @@ struct Type **match_dec_rec(struct Dec *dec, struct Type **type) {
       // turn type into function
       struct Param *params = match_params();
 
-      struct Type *f_type = malloc(sizeof(struct Type));
+      struct Type *f_type = malloc(sizeof(*f_type));
 
       f_type->kind = T_FUNC;
-      f_type->func_sig = malloc(sizeof(struct FuncSig));
+      f_type->func_sig = malloc(sizeof(*f_type->func_sig));
       f_type->func_sig->params = params;
       f_type->func_sig->ret = *type;
 
@@ -162,7 +162,7 @@ struct Field *match_fields() {
       }
     }
 
-    *tail = malloc(sizeof(struct Field));
+    *tail = malloc(sizeof(**tail));
 
     (*tail)->type = dec.type;
     (*tail)->name = dec.identifier;
@@ -189,7 +189,7 @@ struct Param *match_params() {
     struct Type type = match_type();
     struct Dec dec = match_declarator(type);
 
-    *tail = malloc(sizeof(struct Param));
+    *tail = malloc(sizeof(**tail));
 
     (*tail)->type = dec.type;
     (*tail)->name = dec.identifier;
@@ -224,22 +224,23 @@ struct Type match_struct() {
 
     eat_token(IDENT);
 
-    struct Struct struct_def = {0};
-
     if (cur_token.kind == '{') {
-      struct Field *fields = match_fields();
-      struct_def.fields = fields;
-      struct_def.name = name;
-      type.struct_type = add_struct(name, struct_def);
+      type.struct_type = add_struct(name);
+
+      type.struct_type->fields = match_fields();
+      type.struct_type->name = name;
     } else {
-      if (!(type.struct_type = lookup_struct(name))) {
-        type.struct_type = add_struct(name, struct_def);
+      type.struct_type = lookup_struct(name);
+
+      if (!type.struct_type) {
+        type.struct_type = add_struct(name);
+        type.struct_type->name = name;
       }
     }
   } else if (cur_token.kind == '{') {
     // anonymous struct
     struct Field *fields = match_fields();
-    struct Struct *struc = malloc(sizeof(struct Struct));
+    struct Struct *struc = malloc(sizeof(*struc));
 
     struc->name = NULL;
     struc->fields = fields;
@@ -288,6 +289,7 @@ struct Type match_type() {
     struct Symbol *sym = lookup_symbol(cur_token.identifier);
 
     if (sym && sym->kind == S_TYPEDEF) {
+      eat_token(IDENT);
       return *sym->type;
     }
 
@@ -341,9 +343,14 @@ void match_outer_dec() {
     sym.kind = S_TYPEDEF;
     sym.type = dec.type;
 
-    add_symbol(dec.identifier, sym);
+    // TODO: check if symbol already exists before adding it
+    *add_symbol(dec.identifier) = sym;
 
     free(dec.identifier);
+
+    eat_token(';');
+
+    return;
   }
 
   struct Type type = match_type();
@@ -362,13 +369,14 @@ void match_outer_dec() {
   }
 
   if (dec.type->kind == T_FUNC) {
-    struct Func *func = malloc(sizeof(struct Func));
+    struct Func func;
 
-    func->name = dec.identifier;
-    func->sig = dec.type->func_sig;
-    func->stmt = NULL;
+    func.name = dec.identifier;
+    func.sig = dec.type->func_sig;
+    func.stmt = NULL;
 
     if (cur_token.kind == '{') {
+      func.complete = 1;
       // function is defined here
       // new_scope();
       // add function parameters to scope
@@ -396,28 +404,59 @@ void match_outer_dec() {
       eat_token(';');
     }
 
-    // add function to scope
-    struct Symbol sym;
+    struct Func *def = add_func(dec.identifier);
 
-    sym.kind = S_FUNC;
-    sym.func = func;
+    if (def->complete && func.complete) {
+      printf("Redefining function %s\n", dec.identifier);
+      FAIL;
+    }
 
-    add_symbol(dec.identifier, sym);
+    if (def->sig) {
+      if (!type_eq(def->sig->ret, func.sig->ret)) {
+        goto ne;
+      }
+
+      struct Param *param1 = def->sig->params;
+      struct Param *param2 = func.sig->params;
+
+      while (param1 != NULL && param2 != NULL) {
+        if (!type_eq(param1->type, param2->type)) {
+          goto ne;
+        }
+
+        param1 = param1->next;
+        param2 = param2->next;
+      }
+
+      // check that both are null
+      if (param1 != param2) {
+      ne:
+        printf(
+            "Semantic error: redefining function with different signature\n");
+        FAIL;
+      }
+
+      // both are equal
+      free_func_sig(func.sig);
+    } else {
+      def->sig = func.sig;
+    }
+
+    if (func.complete) {
+      def->stmt = func.stmt;
+    }
   } else if (cur_token.kind == ';') {
-    struct Var *var = malloc(sizeof(struct Var));
-    var->type = dec.type;
+    struct Global *global = add_global(dec.identifier);
 
-    struct Symbol sym;
+    if (global->type && !type_eq(global->type, dec.type)) {
+      printf("Semantic error: redefining global with different type\n");
+      FAIL;
+    }
 
-    sym.kind = S_GLOBAL;
-    sym.var = var;
-
-    add_symbol(dec.identifier, sym);
+    global->type = dec.type;
 
     eat_token(';');
   } else if (cur_token.kind == '=') {
-    // add variable to scope
-    // store initializer somehow
     eat_token('=');
 
     // TODO for now skip initializer
@@ -425,17 +464,27 @@ void match_outer_dec() {
       read_token();
     }
 
-    struct Var *var = malloc(sizeof(struct Var));
-    var->type = dec.type;
-
-    struct Symbol sym;
-
-    sym.kind = S_GLOBAL;
-    sym.var = var;
-
-    add_symbol(dec.identifier, sym);
-
     eat_token(';');
+
+    struct Global *global = add_global(dec.identifier);
+
+    if (global->type) {
+      if (!type_eq(global->type, dec.type)) {
+        printf("Semantic error: redefining global with different type\n");
+        FAIL;
+      }
+
+      free(dec.type);
+    } else {
+      global->type = dec.type;
+    }
+
+    if (global->complete) {
+      printf("Semantic error: redefining global\n");
+      FAIL;
+    }
+
+    // TODO store initializer in global
   }
 
   free(dec.identifier);
