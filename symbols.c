@@ -54,6 +54,14 @@ void new_scope() {
   *struct_scope = (struct Scope){.table = NULL, .next = struct_scope};
 }
 
+void add_to_scope(struct Scope *scope, struct Table *table) {
+  struct Scope *new = malloc(sizeof(*scope));
+
+  *new = *scope;
+  scope->table = table;
+  scope->next = new;
+}
+
 // pop all definitions from this last scope
 // free scope and def structs
 void free_scope(struct Scope *scope) {
@@ -119,6 +127,7 @@ struct Table *find_in_table(char *name, struct Table *table) {
   return NULL;
 }
 
+// lookup symbol in symbol table
 struct Symbol *lookup_symbol(char *name) {
   struct SymbolTable *table = (void *)find_in_table(name, (void *)symbol_table);
 
@@ -128,6 +137,7 @@ struct Symbol *lookup_symbol(char *name) {
   return NULL;
 }
 
+// lookup struct in struct table
 struct Struct *lookup_struct(char *name) {
   struct StructTable *table = (void *)find_in_table(name, (void *)struct_table);
 
@@ -163,6 +173,8 @@ struct Symbol *add_symbol(char *name) {
   if (table) {
     def->next = table->def;
     table->def = def;
+    if (symbol_scope)
+      add_to_scope(symbol_scope, (void *)table);
   } else {
     def->next = NULL;
 
@@ -172,6 +184,8 @@ struct Symbol *add_symbol(char *name) {
     table->def = def;
     table->next = symbol_table;
     symbol_table = table;
+    if (symbol_scope)
+      add_to_scope(symbol_scope, (void *)table);
   }
 
   return &def->sym;
@@ -181,22 +195,17 @@ struct Symbol *add_symbol(char *name) {
 // can return pointer to incomplete definition
 struct Global *add_global(char *name) {
   // globals can only be defined outside of scope
-  if (symbol_scope) {
+  if (symbol_scope)
     FAIL;
-  }
 
   struct SymbolTable *table = (void *)find_in_table(name, (void *)symbol_table);
 
   if (table) {
     if (table->def && table->def->sym.kind == S_GLOBAL) {
-      // if (table->def->sym.global->complete) {
-      //   printf("Semantic error: redefining global %s\n", name);
-      //   FAIL;
-      // }
-
       return table->def->sym.global;
     } else {
-      printf("Semantic error: redefining symbol %s as global\n", name);
+      printf("Semantic error: redefining symbol %s as variable\n", name);
+      FAIL;
     }
   }
 
@@ -220,28 +229,10 @@ struct Global *add_global(char *name) {
 struct Struct *add_struct(char *name) {
   // previous definition if it exists
   // if it is in an outer scope we shadow instead of completing
-  struct StDef *prev_def = NULL;
+  struct StDef *prev_def = (void *)find_in_scope(name, struct_scope);
 
-  if (struct_scope) {
-    prev_def = (void *)find_in_scope(name, struct_scope);
-  } else {
-    if (struct_table) {
-      struct Table *table = find_in_table(name, (void *)struct_table);
-
-      if (table) {
-        prev_def = (void *)table->def;
-      }
-    }
-  }
-
-  if (prev_def) {
-    // if (prev_def->struc->complete) {
-    //   printf("Semantic error: redefining struct %s\n", name);
-    //   FAIL;
-    // }
-
+  if (prev_def)
     return prev_def->struc;
-  }
 
   struct StDef *def = malloc(sizeof(*def));
   def->struc = calloc(1, sizeof(*def->struc));
@@ -253,6 +244,8 @@ struct Struct *add_struct(char *name) {
   if (table) {
     def->next = table->def;
     table->def = def;
+    if (struct_scope)
+      add_to_scope(struct_scope, (void *)table);
   } else {
     def->next = NULL;
 
@@ -262,6 +255,8 @@ struct Struct *add_struct(char *name) {
     table->def = def;
     table->next = struct_table;
     struct_table = table;
+    if (struct_scope)
+      add_to_scope(struct_scope, (void *)table);
   }
 
   return def->struc;
@@ -271,22 +266,17 @@ struct Struct *add_struct(char *name) {
 // can return pointer to incomplete definition
 struct Func *add_func(char *name) {
   // functions can only be defined outside of scope
-  if (symbol_scope) {
+  if (symbol_scope)
     FAIL;
-  }
 
   struct SymbolTable *table = (void *)find_in_table(name, (void *)symbol_table);
 
   if (table) {
     if (table->def && table->def->sym.kind == S_FUNC) {
-      // if (table->def->sym.func->complete) {
-      //   printf("Semantic error: redefining function %s\n", name);
-      //  FAIL;
-      // }
-
       return table->def->sym.func;
     } else {
       printf("Semantic error: redefining symbol %s as function\n", name);
+      FAIL;
     }
   }
 

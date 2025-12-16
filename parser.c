@@ -18,6 +18,11 @@
 // type qualifiers
 // declaration lists
 
+// TODO:
+// make shadowing work correctly
+// to do this i have to change the interface for adding symbols
+// idc
+
 // parse token stream into abstract syntax tree
 // we parse functions into symbols and asts
 // we parse globals and type definitions into symbols
@@ -227,6 +232,10 @@ struct Type match_struct() {
     if (cur_token.kind == '{') {
       type.struct_type = add_struct(name);
 
+      if (type.struct_type->complete) {
+        printf("Semantic error: redefining struct\n");
+      }
+
       type.struct_type->fields = match_fields();
       type.struct_type->name = name;
     } else {
@@ -254,6 +263,7 @@ struct Type match_struct() {
 
   return type;
 }
+
 struct Type match_type() {
   // type ::=
   //   | struct/union definition
@@ -343,8 +353,24 @@ void match_outer_dec() {
     sym.kind = S_TYPEDEF;
     sym.type = dec.type;
 
-    // TODO: check if symbol already exists before adding it
-    *add_symbol(dec.identifier) = sym;
+    struct Symbol *prev = lookup_symbol(dec.identifier);
+
+    if (prev) {
+      if (prev->kind != S_TYPEDEF) {
+        printf("Semantic error: redefining symbol %s as a type\n",
+               dec.identifier);
+        FAIL;
+      } else if (!type_eq(dec.type, prev->type)) {
+        printf("Semantic error: redefining type %s as another type\n",
+               dec.identifier);
+        FAIL;
+      }
+
+      // don't need this
+      free_type(sym.type);
+    } else {
+      *add_symbol(dec.identifier) = sym;
+    }
 
     free(dec.identifier);
 
