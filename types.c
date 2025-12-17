@@ -245,12 +245,16 @@ void free_func_sig(struct FuncSig *sig) {
 
   while (param != NULL) {
     struct Param *new = param->next;
+    free(param->name);
+    free_type(param->type);
     free(param);
     param = new;
   }
 }
 
 void free_type(struct Type *type) {
+  if (type->istypedef) return;
+  
   while (type != NULL) {
     struct Type *old = type;
 

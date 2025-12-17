@@ -16,6 +16,10 @@ struct Type {
     T_FUNC
   } kind;
 
+  // if this is a typedef we don't want to free it
+  // TODO: could use this for rc instead of leaking memory
+  int istypedef;
+
   union {
     struct Type *ptr_type;
     struct {

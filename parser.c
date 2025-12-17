@@ -59,6 +59,7 @@ struct Type **match_dec_rec(struct Dec *dec, struct Type **type) {
     struct Type *ptr_type = malloc(sizeof(*ptr_type));
     ptr_type->kind = T_POINTER;
     ptr_type->ptr_type = *type;
+    ptr_type->istypedef = 0;
 
     *type = ptr_type;
 
@@ -110,6 +111,7 @@ struct Type **match_dec_rec(struct Dec *dec, struct Type **type) {
       arr_type->kind = T_ARRAY;
       arr_type->array.elem_type = *type;
       arr_type->array.len = len;
+      arr_type->istypedef = 0;
 
       *type = arr_type;
       type = &arr_type->array.elem_type;
@@ -125,6 +127,7 @@ struct Type **match_dec_rec(struct Dec *dec, struct Type **type) {
       f_type->func_sig = malloc(sizeof(*f_type->func_sig));
       f_type->func_sig->params = params;
       f_type->func_sig->ret = *type;
+      f_type->istypedef = 0;
 
       *type = f_type;
       type = &f_type->func_sig->ret;
@@ -372,6 +375,8 @@ void match_outer_dec() {
       *add_symbol(dec.identifier) = sym;
     }
 
+    sym.type->istypedef = 1;
+
     free(dec.identifier);
 
     eat_token(';');
@@ -578,6 +583,30 @@ struct Stmt *match_stmt() {
   //     - FIRST = var name, function name, unary operator
   //   | assignment operator
   // assignment / function call is an expression
+
+  struct Type *type;
+
+  switch (cur_token.kind) {
+  // blocks
+  case FOR:
+  case WHILE:
+  case IF:
+
+  // type - declaration
+  case INT_TYPE:
+
+  case CHAR_TYPE:
+  case VOID_TYPE:
+  case FLOAT_TYPE:
+
+  dec:
+  case IDENT:;
+    // match if it is type or not
+  default:
+    printf("Syntax error: Unexpected token '%s' in statement\n",
+           token_repr[cur_token.kind]);
+    FAIL;
+  }
 
   return NULL;
 }
