@@ -373,10 +373,10 @@ void match_outer_dec() {
       // don't need this
       free_type(sym.type);
     } else {
+      sym.type->istypedef = 1;
+
       *add_symbol(dec.identifier) = sym;
     }
-
-    sym.type->istypedef = 1;
 
     free(dec.identifier);
 

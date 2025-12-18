@@ -255,8 +255,10 @@ void free_func_sig(struct FuncSig *sig) {
 }
 
 void free_type(struct Type *type) {
-  if (type->istypedef)
+  if (type->istypedef) {
+    free(type);
     return;
+  }
 
   while (type != NULL) {
     struct Type *old = type;

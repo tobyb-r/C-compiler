@@ -5,11 +5,19 @@ char str[10];
 char str[10] = "abcdefghij";
 
 typedef int (*q)[10];
+typedef int (*q)[10];
 
 q r();
+q r();
+
+q k;
+q k;
+q k;
+q k;
 
 char *(*fp)(int, float *);
 char *(*fp)(int, float *);
+void (*signal(int, void (*fp)(int)))(int);
 void (*signal(int, void (*fp)(int)))(int);
 
 struct a {
@@ -17,7 +25,11 @@ struct a {
   char *monkey;
 };
 
+struct a;
+
 struct b;
+
+struct b { struct b *j; };
 
 struct a p;
 
@@ -31,6 +43,7 @@ int takesa(struct a x[], int *ff, char f) {
 
 int minusone = -1;
 
+int x(int *());
 int x(int *());
 
 int brother() {
@@ -54,3 +67,5 @@ int main() {
   struct a y;
   // int b = (*z('c'))[10];
 }
+
+int main();
