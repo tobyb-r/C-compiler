@@ -87,6 +87,9 @@ struct Type **match_dec_rec(struct Dec *dec, struct Type **type) {
 
     return type;
 
+  case '[':
+    break;
+
   default:
     printf("Syntax error: Expected identifier, found %s\n",
            token_repr[cur_token.kind]);
@@ -227,7 +230,7 @@ struct Type match_struct() {
   type.kind = T_STRUCT;
 
   if (cur_token.kind == IDENT) {
-    char *name = malloc(strlen(cur_token.identifier) + 1);
+    char name[256];
     strcpy(name, cur_token.identifier);
 
     eat_token(IDENT);
@@ -240,13 +243,11 @@ struct Type match_struct() {
       }
 
       type.struct_type->fields = match_fields();
-      type.struct_type->name = name;
     } else {
       type.struct_type = lookup_struct(name);
 
       if (!type.struct_type) {
         type.struct_type = add_struct(name);
-        type.struct_type->name = name;
       }
     }
   } else if (cur_token.kind == '{') {
@@ -400,10 +401,14 @@ void match_outer_dec() {
   }
 
   if (dec.type->kind == T_FUNC) {
-    struct Func func;
+    struct Func func = {0};
 
     func.name = dec.identifier;
     func.sig = dec.type->func_sig;
+
+    if (!dec.type->istypedef)
+      free(dec.type);
+
     func.stmt = NULL;
 
     if (cur_token.kind == '{') {
@@ -479,12 +484,16 @@ void match_outer_dec() {
   } else if (cur_token.kind == ';') {
     struct Global *global = add_global(dec.identifier);
 
-    if (global->type && !type_eq(global->type, dec.type)) {
-      printf("Semantic error: redefining global with different type\n");
-      FAIL;
-    }
+    if (global->type) {
+      if (!type_eq(global->type, dec.type)) {
+        printf("Semantic error: redefining global with different type\n");
+        FAIL;
+      }
 
-    global->type = dec.type;
+      free_type(dec.type);
+    } else {
+      global->type = dec.type;
+    }
 
     eat_token(';');
   } else if (cur_token.kind == '=') {
@@ -505,7 +514,7 @@ void match_outer_dec() {
         FAIL;
       }
 
-      free(dec.type);
+      free_type(dec.type);
     } else {
       global->type = dec.type;
     }
@@ -582,24 +591,21 @@ struct Stmt *match_stmt() {
   //   | expression;
   //     - FIRST = var name, function name, unary operator
   //   | assignment operator
-  // assignment / function call is an expression
-
-  struct Type *type;
 
   switch (cur_token.kind) {
   // blocks
   case FOR:
   case WHILE:
   case IF:
+    break;
 
   // type - declaration
   case INT_TYPE:
-
   case CHAR_TYPE:
   case VOID_TYPE:
   case FLOAT_TYPE:
+    break;
 
-  dec:
   case IDENT:;
     // match if it is type or not
   default:

@@ -2,6 +2,7 @@
 #define AST_HEADER
 
 #include "symbols.h"
+#include "types.h"
 
 // AST structs
 enum Op {
@@ -23,9 +24,6 @@ enum Op {
   O_OR,
   O_AND,
 };
-
-// function symbol with FuncSig and ast
-struct Func;
 
 struct Expr {
   // TODO: struct/array initializers, constants, field of struct

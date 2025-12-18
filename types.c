@@ -14,7 +14,7 @@ char *type_repr[] = {
 // returns 1 if two types are equivalent
 int type_eq(struct Type *l, struct Type *r) {
   if (l->kind != r->kind) {
-    return 1;
+    return 0;
   };
 
   switch (l->kind) {
@@ -250,11 +250,14 @@ void free_func_sig(struct FuncSig *sig) {
     free(param);
     param = new;
   }
+
+  free(sig);
 }
 
 void free_type(struct Type *type) {
-  if (type->istypedef) return;
-  
+  if (type->istypedef)
+    return;
+
   while (type != NULL) {
     struct Type *old = type;
 
@@ -262,10 +265,12 @@ void free_type(struct Type *type) {
     case T_POINTER:
     case T_ARRAY:
       type = type->ptr_type;
+      free(old);
       break;
     case T_FUNC:
       free_func_sig(type->func_sig);
-      type = NULL;
+      free(old);
+      return;
       break;
     case T_CHAR:
     case T_FLOAT:
@@ -274,10 +279,9 @@ void free_type(struct Type *type) {
     case T_ENUM:
     case T_UNION:
     case T_STRUCT:
-      type = NULL;
+      free(old);
+      return;
       break;
     }
-
-    free(old);
   }
 }
