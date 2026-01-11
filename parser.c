@@ -5,6 +5,7 @@
 #include "ast.h"
 #include "fail.h"
 #include "lexer.h"
+#include "parser.h"
 #include "symbols.h"
 #include "types.h"
 
@@ -49,6 +50,11 @@ struct Dec match_declarator(struct Type type_) {
   return dec;
 }
 
+// recursive function that matches the declarator
+// dec is a pointer to the inner declaration
+// type is a pointer to the current declaration we are operating on
+// the recursive call returns the new pointer we operate on
+// https://c-faq.com/decl/spiral.anderson.html
 struct Type **match_dec_rec(struct Dec *dec, struct Type **type) {
   switch (cur_token.kind) {
   case STAR:
@@ -67,6 +73,12 @@ struct Type **match_dec_rec(struct Dec *dec, struct Type **type) {
 
   case '(':
     eat_token('(');
+
+    if (cur_token.kind == ')') {
+      printf("Syntax error: Expected identifier, found ')'\n");
+      FAIL;
+    }
+
     type = match_dec_rec(dec, type);
     eat_token(')');
 
@@ -88,6 +100,10 @@ struct Type **match_dec_rec(struct Dec *dec, struct Type **type) {
     return type;
 
   case '[':
+    // no identifier
+
+    dec->identifier = NULL;
+
     break;
 
   default:
@@ -394,9 +410,11 @@ void match_outer_dec() {
 
   struct Dec dec = match_declarator(type);
   type_verify(dec.type);
+  int _line = line;
+  int _line_col = line_col;
 
   if (dec.identifier == NULL) {
-    printf("Syntax error: Outer decleration with no identifier\n");
+    printf("Syntax error: Expected identifier\n");
     FAIL;
   }
 
@@ -469,6 +487,8 @@ void match_outer_dec() {
       ne:
         printf(
             "Semantic error: redefining function with different signature\n");
+        line = _line;
+        line_col = _line_col;
         FAIL;
       }
 
@@ -487,6 +507,8 @@ void match_outer_dec() {
     if (global->type) {
       if (!type_eq(global->type, dec.type)) {
         printf("Semantic error: redefining global with different type\n");
+        line = _line;
+        line_col = _line_col;
         FAIL;
       }
 
@@ -511,6 +533,8 @@ void match_outer_dec() {
     if (global->type) {
       if (!type_eq(global->type, dec.type)) {
         printf("Semantic error: redefining global with different type\n");
+        line = _line;
+        line_col = _line_col;
         FAIL;
       }
 
@@ -521,6 +545,8 @@ void match_outer_dec() {
 
     if (global->complete) {
       printf("Semantic error: redefining global\n");
+      line = _line;
+      line_col = _line_col;
       FAIL;
     }
 
@@ -565,17 +591,216 @@ struct Stmt *match_inner_dec() {
   return NULL;
 }
 
+struct Expr *match_primary_rec();
+
+struct Expr *match_primary_expr() {
+  // primary ::=
+  //   | var-name
+  //   | constant
+  //   | ( expr )
+  //   | `prefix-op` primary
+  //   | primary `postfix-op`
+  //
+  // indexing and calling functions are postfix operators
+  // '*' and '&' are prefix operators
+  // postfix operators have higher precedence than prefix operators
+  //
+  // parsed like declarators
+
+  struct Expr *expr = match_primary_rec();
+
+  return expr;
+}
+
+// prefix operators
+// TODO:  ++ -- & + - ~ !
+enum UnOp unoperators[256] = {
+    [AMP] = O_REF,
+    [STAR] = O_DEREF,
+};
+
+// similar to match_dec_rec
+struct Expr *match_primary_rec() {
+  struct Expr *expr = malloc(sizeof(*expr));
+
+  // prefix operators
+  while (unoperators[cur_token.kind]) {
+    expr->kind = E_UNOP;
+    expr->unop.op = unoperators[cur_token.kind];
+    expr->unop.expr = malloc(sizeof(*expr->unop.expr));
+    expr = expr->unop.expr;
+  }
+
+  // primary
+  switch (cur_token.kind) {
+  case INTEGER:
+    *expr = (struct Expr){
+        .kind = E_CONST,
+        .cnst = {.kind = C_INT, .int_literal = cur_token.int_literal}};
+
+    read_token();
+    break;
+  case IDENT:;
+    struct Symbol *sym = lookup_symbol(cur_token.identifier);
+    if (sym->kind == S_VAR) {
+      *expr = (struct Expr){.kind = E_VAR, .var = sym->var};
+    } else if (sym->kind == S_FUNC) {
+      *expr = (struct Expr){.kind = E_FUNC, .func = sym->func};
+    } else {
+      printf("Unexpected symbol %s \"%s\" in expression\n",
+             symbol_repr[sym->kind], cur_token.identifier);
+      FAIL;
+    }
+    read_token();
+    break;
+  case '(':
+    eat_token('(');
+    expr = match_expr();
+    eat_token(')');
+    break;
+  default:
+    printf("Syntax error: Unexpected %s in expression\n",
+           token_repr[cur_token.kind]);
+    FAIL;
+  }
+
+  // postfix operators
+  // TODO: ++ -- -> .
+  while (1) {
+    if (cur_token.kind == '[') {
+      FAIL; // TODO
+    } else if (cur_token.kind == '(') {
+      FAIL; // TODO
+    } else {
+      break;
+    }
+  }
+
+  return expr;
+}
+
+// precedence of tokens for different operators
+// operators are left assoc except for assignment which is right assoc
+// 1 * / %
+// 2 + -
+// 3 >> <<
+// 4 > < >= <=
+// 5 == !=
+// 6 & then ^ then | then && then ||
+// 7 ternary ? :
+// 8 assignment = += -=
+// TODO: unfinished
+// precedence[op] is 0 for operators that aren't written below
+int precedences[256] = {
+    [STAR] = 6, [SLASH] = 6, [MOD] = 6,            // multiplicative ops
+    [PLUS] = 5, [MINUS] = 5,                       // additive ops
+    [LT] = 4,   [GT] = 4,    [LTE] = 4, [GTE] = 4, // comparisons
+    [EQ] = 3,   [NE] = 3,                          // == !=
+    [AND] = 2,  [OR] = 1,                          // logic
+};
+
+enum BinOp operators[256] = {
+    // arithmetic
+    [STAR] = O_MUL,
+    [SLASH] = O_DIV,
+    [MOD] = O_MOD,
+    [PLUS] = O_ADD,
+    [MINUS] = O_SUB,
+
+    // comparisons
+    [LT] = O_LT,
+    [GT] = O_GT,
+    [LTE] = O_LTE,
+    [GTE] = O_GTE,
+    [EQ] = O_EQ,
+    [NE] = O_NE,
+
+    // logic
+    [AND] = O_AND,
+    [OR] = O_OR,
+};
+
+// construct expression from the left hand side and the precedence
+// precedence is the minumum precedence for the lhs to be applied with the next
+// operator instead of the previous one
+struct Expr *match_expr_op(struct Expr *lhs, int precedence) {
+  // from wikipedia:
+  //
+  // parse_expression_1(lhs, min_precedence)
+  //   lookahead := peek next token
+  //
+  //   while (lookahead is a binary operator whose precedence is >=
+  //          min_precedence)
+  //     op := lookahead
+  //     advance to next token
+  //     rhs := parse_primary ()
+  //     lookahead := peek next token
+  //
+  //     while (lookahead is a binary operator whose precedence is greater
+  //            than op's, or a right-associative operator
+  //            whose precedence is equal to op's)
+  //       rhs := parse_expression_1 (rhs, precedence of op + (1 if lookahead
+  //              precedence is greater, else 0))
+  //       lookahead := peek next token
+  //
+  //     lhs := the result of applying op with operands lhs and rhs
+  //   return lhs
+
+  int cur_precedence = precedences[cur_token.kind];
+
+  // if this operator has higher precedence than the one before lhs
+  while (cur_precedence > precedence) {
+    enum BinOp op = operators[cur_token.kind];
+    read_token();
+
+    struct Expr *rhs = match_primary_expr();
+    int next_precedence = precedences[cur_token.kind];
+
+    // if the next operator has higher precedence than cur we apply rhs
+    while (next_precedence > cur_precedence) {
+      rhs = match_expr_op(rhs, cur_precedence);
+      next_precedence = precedences[cur_token.kind];
+    }
+
+    struct Expr *new = malloc(sizeof(*new));
+
+    *new = (struct Expr){.kind = E_BINOP, .binop = {op, lhs, rhs}};
+
+    lhs = new;
+
+    cur_precedence = next_precedence;
+  }
+
+  if (cur_token.kind == ASSIGN) {
+    eat_token(ASSIGN);
+    struct Expr *new = malloc(sizeof(*new));
+
+    struct Expr *rhs = match_expr();
+
+    *new = (struct Expr){.kind = E_BINOP, .binop = {O_ASSIGN, lhs, rhs}};
+
+    lhs = new;
+  }
+
+  return lhs;
+}
+
 struct Expr *match_expr() {
   // assignment is an expression
   //
   // expr ::=
-  //   | lvalue
-  //   | constant
-  //   | lvalue = expr
-  //     - right assoc
+  //   | `prefix-op` expr
   //   | expr `op` expr
+  //   | lvalue = expr
+  //     - special case of `op`
+  //     - this is the only right assoc operator
+  //     - for assignment we parse the whole rhs of = as an expr ignoring prec
+  // can do operator precedence parsing
 
-  return NULL;
+  struct Expr *primary = match_primary_expr();
+  struct Expr *expr = match_expr_op(primary, 0);
+
+  return expr;
 }
 
 // probably need different functions and structs for int/string
@@ -593,28 +818,69 @@ struct Stmt *match_stmt() {
   //   | assignment operator
 
   switch (cur_token.kind) {
+  case SEMICOLON:
+    return NULL;
   // blocks
   case FOR:
+    // match for
+    eat_token(FOR);
+    return NULL;
   case WHILE:
+    // match for
+    eat_token(WHILE);
+    return NULL;
   case IF:
-    break;
+    // match for
+    eat_token(IF);
+    return NULL;
 
   // type - declaration
   case INT_TYPE:
   case CHAR_TYPE:
   case VOID_TYPE:
   case FLOAT_TYPE:
-    break;
+    goto dec;
 
   case IDENT:;
     // match if it is type or not
+    struct Symbol *symbol = lookup_symbol(cur_token.identifier);
+
+    if (!symbol) {
+      printf("Semantic error: undefined symbol %s\n", cur_token.identifier);
+      FAIL;
+    }
+
+    if (symbol->kind == S_TYPEDEF) {
+      goto dec;
+    } else {
+      goto expr;
+    }
   default:
     printf("Syntax error: Unexpected token '%s' in statement\n",
            token_repr[cur_token.kind]);
     FAIL;
   }
 
-  return NULL;
+dec:;
+  struct Type type = match_type();
+  struct Dec dec = match_declarator(type);
+  // add to scope
+
+  if (cur_token.kind == '=') {
+    // return assignment expression
+    return NULL;
+  } else {
+    eat_token(';');
+    return NULL;
+  }
+
+expr:;
+  struct Expr *expr = match_expr();
+
+  struct Stmt *stmt = malloc(sizeof(*stmt));
+  *stmt = (struct Stmt){.kind = S_EXPR, .expr = expr};
+
+  return stmt;
 }
 
 struct BlockStmt *match_block_stmt() {
@@ -636,8 +902,6 @@ struct BlockStmt *match_block_stmt() {
 // parse start_symbol
 void parse() {
   setup_lexer();
-
-  read_token();
 
   while (cur_token.kind != END) {
     match_outer_dec();

@@ -10,6 +10,9 @@
 #include "types.h"
 
 // TODO: handle partial definitions
+char *symbol_repr[] = {
+    [S_TYPEDEF] = "typedef", [S_GLOBAL] = "global",         [S_VAR] = "var",
+    [S_PARAM] = "param",     [S_ENUM_CONST] = "enum const", [S_FUNC] = "func"};
 
 // parent table type
 struct Table {
@@ -339,7 +342,7 @@ void debug_symbol(struct Symbol *symbol) {
     debug_type(symbol->func->sig->ret);
     break;
   default:
-    printf("[%d]", symbol->kind);
+    printf("[%s]", symbol_repr[symbol->kind]);
   }
 
   printf("\n");

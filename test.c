@@ -1,18 +1,11 @@
 int c2i(char c) { return c; }
 
-// https://c-faq.com/decl/spiral.anderson.html
-char str[10];
 char str[10] = "abcdefghij";
 
 typedef int (*q)[10];
-typedef int (*q)[10];
 
 q r();
-q r();
 
-q k;
-q k;
-q k;
 q k;
 
 char *(*fp)(int, float *);
@@ -29,7 +22,9 @@ struct a;
 
 struct b;
 
-struct b { struct b *j; };
+struct b {
+  struct b *j;
+};
 
 struct a p;
 
@@ -43,11 +38,16 @@ int takesa(struct a x[], int *ff, char f) {
 
 int minusone = -1;
 
-int x(int *());
-int x(int *());
+int x(int (*)());
+int x(int (*)());
 
-int brother() {
-  int a, b;
+void buffalo(int);
+
+int brother(int y()) {
+  void (*a)(int);
+  int b;
+
+  a = buffalo;
 
   int *other = &minusone;
 

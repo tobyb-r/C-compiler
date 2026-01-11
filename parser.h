@@ -3,4 +3,6 @@
 
 void parse();
 
+struct Expr *match_expr();
+
 #endif

@@ -53,7 +53,7 @@ enum TokenKind {
   // operators
   // TODO: & | ^ << >>
   // TODO: ++ --
-  // TODO: assignment operators
+  // TODO: += -= etc
   AMP,  // & can be addressof or bitwise and
   STAR, // * can be multiply or pointer type or dereference
   SLASH,

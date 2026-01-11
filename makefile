@@ -3,7 +3,7 @@ CFLAGS = -Wall -Wextra -Wpedantic -g
 
 BUILD_DIR = build
 
-sources = main lexer parser symbols types
+sources = main lexer parser symbols types ast
 
 objects = $(patsubst %,$(BUILD_DIR)/%.o,$(sources))
 

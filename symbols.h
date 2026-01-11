@@ -2,6 +2,7 @@
 #define SYMBOLS_HEADER
 
 struct Var {
+  char *name;
   struct Type *type;
 };
 
@@ -65,6 +66,8 @@ struct Symbol {
     struct Func *func;
   };
 };
+
+extern char *symbol_repr[];
 
 struct Func {
   char *name;

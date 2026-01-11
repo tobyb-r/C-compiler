@@ -5,53 +5,87 @@
 #include "types.h"
 
 // AST structs
-enum Op {
-  O_ASSIGN,
+
+// int, string or char literal
+struct Constant {
+  enum { C_INT, C_STR, C_CHAR } kind;
+
+  union {
+    int int_literal;
+    char char_literal;
+
+    struct {
+      char *ptr;
+      int strlen;
+    } str_literal;
+  };
+};
+
+enum UnOp {
+  O_DEREF, // *
+  O_REF,   // &
+  O_NOT,   // !
+};
+
+enum BinOp {
+  O_ASSIGN, // a = 1
+  O_INDEX,  // a[1]
+
+  // arithmetic
   O_MUL,
   O_DIV,
   O_ADD,
   O_SUB,
   O_MOD,
-  O_REF,
-  O_DEREF,
+
+  // comparisons
   O_EQ,
   O_NE,
   O_LT,
   O_GT,
   O_LTE,
   O_GTE,
-  O_NOT,
+
+  // logic
   O_OR,
   O_AND,
 };
 
 struct Expr {
   // TODO: struct/array initializers, constants, field of struct
-  enum { E_VAR, E_UNOP, E_BINOP, E_CALL } kind;
+  enum { E_CONST, E_VAR, E_FUNC, E_UNOP, E_BINOP, E_CALL } kind;
 
   union {
+    struct Constant cnst;
+
     struct Var *var;
 
+    struct Func *func;
+
     struct {
-      enum Op op;
+      enum BinOp op;
 
       // for an assignment the left must be an lvalue
-      // could handle assignments differently
-      // could handle unary ops differently
       struct Expr *l;
-      struct Expr *r; // NULL if expr is UNOP
-    };
+      struct Expr *r;
+    } binop;
 
     struct {
-      struct Func *func;
+      enum UnOp op;
+      struct Expr *expr;
+    } unop;
+
+    // function call
+    struct {
+      struct Expr *func_expr;
       struct Args *args;
-    };
+    } call;
   };
 };
 
 // arguments to function call
 struct Args {
-  struct Expr expr;
+  struct Expr *expr;
   struct Args *next;
 };
 
@@ -59,6 +93,8 @@ struct Stmt {
   enum { S_EXPR, S_IF, S_FOR, S_WHILE, S_RETURN } kind;
 
   union {
+    struct Expr *expr;
+
     struct {
       struct Expr *init;
       struct Expr *iter;
@@ -76,6 +112,8 @@ struct Stmt {
       struct Expr *test;
       struct BlockStmt *block;
     } while_stmt;
+
+    struct Expr *ret;
   };
 };
 
@@ -83,5 +121,7 @@ struct BlockStmt {
   struct Stmt stmt;
   struct BlockStmt *next;
 };
+
+void debug_expr(struct Expr *expr);
 
 #endif
