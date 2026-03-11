@@ -9,6 +9,8 @@
 #include "symbols.h"
 #include "types.h"
 
+struct Func *cur_func = NULL;
+
 // TODO: handle partial definitions
 char *symbol_repr[] = {
     [S_TYPEDEF] = "typedef", [S_GLOBAL] = "global",         [S_VAR] = "var",
@@ -26,9 +28,9 @@ struct Table {
 struct SymbolTable {
   struct SymbolTable *next;
   char *name;
-  struct SDef {
-    struct SDef *next;
-    struct Symbol sym;
+  struct SymDef {
+    struct SymDef *next;
+    struct Symbol *sym;
   } *def;
 } *symbol_table;
 
@@ -50,28 +52,31 @@ struct Scope *struct_scope = NULL;
 struct Scope *symbol_scope = NULL;
 
 void new_scope() {
-  symbol_scope = malloc(sizeof(*symbol_scope));
-  *symbol_scope = (struct Scope){.table = NULL, .next = symbol_scope};
+  struct Scope *new_symbol_scope = malloc(sizeof(*new_symbol_scope));
+  *new_symbol_scope = (struct Scope){.table = NULL, .next = symbol_scope};
+  symbol_scope = new_symbol_scope;
 
-  struct_scope = malloc(sizeof(*struct_scope));
-  *struct_scope = (struct Scope){.table = NULL, .next = struct_scope};
+  struct Scope *new_struct_scope = malloc(sizeof(*new_struct_scope));
+  *new_struct_scope = (struct Scope){.table = NULL, .next = struct_scope};
+  struct_scope = new_struct_scope;
 }
 
-void add_to_scope(struct Scope *scope, struct Table *table) {
+void add_to_scope(struct Scope **scope, struct Table *table) {
   struct Scope *new = malloc(sizeof(*scope));
 
-  *new = *scope;
-  scope->table = table;
-  scope->next = new;
+  new->table = table;
+  new->next = *scope;
+  *scope = new;
 }
 
 // pop all definitions from this last scope
 // free scope and def structs
-void free_scope(struct Scope *scope) {
+void free_scope(struct Scope **the_scope) {
+  struct Scope *scope = *the_scope;
   while (1) {
     if (scope->table == NULL) {
       struct Scope *old = scope;
-      scope = scope->next;
+      *the_scope = scope->next;
       free(old);
       break;
     }
@@ -89,6 +94,34 @@ void free_scope(struct Scope *scope) {
   }
 }
 
+void free_symbol_scope() {
+  struct Scope *scope = symbol_scope;
+
+  while (1) {
+    if (scope->table == NULL) {
+      struct Scope *old = scope;
+      symbol_scope = scope->next;
+      free(old);
+      break;
+    }
+
+    struct Table *table = scope->table;
+    struct SymDef *old_d = (void *)table->def;
+    table->def = table->def->next;
+
+    // TODO could free symbol data if it is unused
+    // could use refcounting
+    free(old_d->sym);
+    free(old_d);
+
+    struct Scope *old = scope;
+    scope = scope->next;
+    free(old);
+  }
+}
+
+void free_struct_scope() { free_scope(&struct_scope); }
+
 // exit a scope
 void exit_scope() {
   if (symbol_scope == NULL) {
@@ -96,8 +129,8 @@ void exit_scope() {
     FAIL;
   }
 
-  free_scope(symbol_scope);
-  free_scope(struct_scope);
+  free_symbol_scope();
+  free_struct_scope();
 }
 
 // finds if name is in current scope
@@ -135,7 +168,7 @@ struct Symbol *lookup_symbol(char *name) {
   struct SymbolTable *table = (void *)find_in_table(name, (void *)symbol_table);
 
   if (table && table->def)
-    return &table->def->sym;
+    return table->def->sym;
 
   return NULL;
 }
@@ -169,29 +202,29 @@ struct Symbol *add_symbol(char *name) {
     }
   }
 
-  struct SDef *def = calloc(1, sizeof(*def));
+  struct SymDef *def = calloc(1, sizeof(*def));
 
   struct SymbolTable *table = (void *)find_in_table(name, (void *)symbol_table);
 
   if (table) {
     def->next = table->def;
     table->def = def;
-    if (symbol_scope)
-      add_to_scope(symbol_scope, (void *)table);
   } else {
     def->next = NULL;
-
     table = malloc(sizeof(*table));
     table->name = malloc(strlen(name) + 1);
     strcpy(table->name, name);
     table->def = def;
     table->next = symbol_table;
     symbol_table = table;
-    if (symbol_scope)
-      add_to_scope(symbol_scope, (void *)table);
   }
 
-  return &def->sym;
+  if (symbol_scope)
+    add_to_scope(&symbol_scope, (void *)table);
+
+  def->sym = calloc(1, sizeof(*def->sym));
+
+  return def->sym;
 }
 
 // define global
@@ -204,27 +237,44 @@ struct Global *add_global(char *name) {
   struct SymbolTable *table = (void *)find_in_table(name, (void *)symbol_table);
 
   if (table) {
-    if (table->def && table->def->sym.kind == S_GLOBAL) {
-      return table->def->sym.global;
-    } else {
-      printf("Semantic error: redefining symbol %s as variable\n", name);
-      FAIL;
+    if (table->def) {
+      if (table->def->sym->kind == S_GLOBAL) {
+        return table->def->sym->global;
+      } else {
+        printf("Semantic error: redefining symbol %s as global\n", name);
+        FAIL;
+      }
     }
+  } else {
+    table = malloc(sizeof(*table));
+    table->name = malloc(strlen(name) + 1);
+    strcpy(table->name, name);
+    table->next = symbol_table;
+    symbol_table = table;
   }
 
-  struct SDef *def = malloc(sizeof(*def));
-  def->next = NULL;
-  def->sym.kind = S_GLOBAL;
-  def->sym.global = calloc(1, sizeof(*def->sym.global));
-
-  table = malloc(sizeof(*table));
-  table->name = malloc(strlen(name) + 1);
-  strcpy(table->name, name);
+  struct SymDef *def = calloc(1, sizeof(*def));
+  def->next = table->def;
   table->def = def;
-  table->next = symbol_table;
-  symbol_table = table;
 
-  return def->sym.global;
+  def->sym = calloc(1, sizeof(*def->sym));
+  def->sym->kind = S_GLOBAL;
+  def->sym->global = calloc(1, sizeof(*def->sym->global));
+  def->sym->global->name = malloc(strlen(name) + 1);
+  strcpy(def->sym->global->name, name);
+
+  return def->sym->global;
+}
+
+// add a local variable
+struct Var *add_local(char *name, struct Type *type) {
+  struct Symbol *sym = add_symbol(name);
+  sym->kind = S_VAR;
+  sym->var = malloc(sizeof(*sym->var));
+  sym->var->name = malloc(strlen(name));
+  strcpy(sym->var->name, name);
+  sym->var->type = type;
+  return sym->var;
 }
 
 // define a new struct
@@ -248,7 +298,7 @@ struct Struct *add_struct(char *name) {
     def->next = table->def;
     table->def = def;
     if (struct_scope)
-      add_to_scope(struct_scope, (void *)table);
+      add_to_scope(&struct_scope, (void *)table);
   } else {
     def->next = NULL;
 
@@ -259,7 +309,7 @@ struct Struct *add_struct(char *name) {
     table->next = struct_table;
     struct_table = table;
     if (struct_scope)
-      add_to_scope(struct_scope, (void *)table);
+      add_to_scope(&struct_scope, (void *)table);
   }
 
   return def->struc;
@@ -275,29 +325,42 @@ struct Func *add_func(char *name) {
   struct SymbolTable *table = (void *)find_in_table(name, (void *)symbol_table);
 
   if (table) {
-    if (table->def && table->def->sym.kind == S_FUNC) {
-      return table->def->sym.func;
+    if (table->def && table->def->sym->kind == S_FUNC) {
+      return table->def->sym->func;
     } else {
       printf("Semantic error: redefining symbol %s as function\n", name);
       FAIL;
     }
   }
 
-  struct SDef *def = malloc(sizeof(*def));
-  def->next = NULL;
-  def->sym.kind = S_FUNC;
-  def->sym.func = calloc(1, sizeof(*def->sym.func));
-  def->sym.func->name = malloc(strlen(name) + 1);
-  strcpy(def->sym.func->name, name);
+  if (table) {
+    if (table->def) {
+      if (table->def->sym->kind == S_FUNC) {
+        return table->def->sym->func;
+      } else {
+        printf("Semantic error: redefining symbol %s as global\n", name);
+        FAIL;
+      }
+    }
+  } else {
+    table = malloc(sizeof(*table));
+    table->name = malloc(strlen(name) + 1);
+    strcpy(table->name, name);
+    table->next = symbol_table;
+    symbol_table = table;
+  }
 
-  table = malloc(sizeof(*table));
-  table->name = malloc(strlen(name) + 1);
-  strcpy(table->name, name);
+  struct SymDef *def = calloc(1, sizeof(*def));
+  def->next = table->def;
   table->def = def;
-  table->next = symbol_table;
-  symbol_table = table;
 
-  return def->sym.func;
+  def->sym = calloc(1, sizeof(*def->sym));
+  def->sym->kind = S_FUNC;
+  def->sym->func = calloc(1, sizeof(*def->sym->func));
+  def->sym->func->name = malloc(strlen(name) + 1);
+  strcpy(def->sym->func->name, name);
+
+  return def->sym->func;
 }
 
 void debug_symbol(struct Symbol *symbol) {
@@ -352,38 +415,48 @@ void debug_symbols() {
   // walk through and print symbols associated with identifiers
   printf("Symbols are:\n");
 
-  struct SymbolTable *entry = symbol_table;
+  struct SymbolTable *sym_entry = symbol_table;
 
-  while (entry != NULL) {
-    printf("- %s\n  ", entry->name);
+  while (sym_entry) {
+    struct SymDef *def = sym_entry->def;
 
-    debug_symbol(&entry->def->sym);
+    while (def) {
+      printf("- %s\n  ", sym_entry->name);
 
-    entry = entry->next;
+      debug_symbol(sym_entry->def->sym);
+      def = def->next;
+    }
+
+    sym_entry = sym_entry->next;
   }
 
   printf("Structs are:\n");
 
-  struct StructTable *sentry = struct_table;
+  struct StructTable *st_entry = struct_table;
 
-  while (sentry != NULL) {
-    printf("- %s\n", sentry->name);
+  while (st_entry) {
+    struct StDef *def = st_entry->def;
 
-    struct Field *field = (sentry->def->struc)->fields;
+    while (def) {
+      printf("- %s\n", st_entry->name);
 
-    while (field != NULL) {
-      printf("    ");
-      debug_type(field->type);
+      struct Field *field = (st_entry->def->struc)->fields;
 
-      if (field->name != NULL) {
-        printf(" %s\n", field->name);
-      } else {
-        printf(" anon\n");
+      while (field != NULL) {
+        printf("    ");
+        debug_type(field->type);
+
+        if (field->name != NULL) {
+          printf(" %s\n", field->name);
+        } else {
+          printf(" anon\n");
+        }
+
+        field = field->next;
       }
 
-      field = field->next;
+      def = def->next;
     }
-
-    sentry = sentry->next;
+    st_entry = st_entry->next;
   }
 }

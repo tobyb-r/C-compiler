@@ -12,6 +12,28 @@ char *type_repr[] = {
 };
 
 // returns 1 if two types are equivalent
+int compare_func_sig(struct FuncSig *sig1, struct FuncSig *sig2) {
+    if (!type_eq(sig1->ret, sig2->ret)) {
+      return 0;
+    }
+
+    struct Param *param1 = sig1->params;
+    struct Param *param2 = sig2->params;
+
+    while (param1 != NULL && param2 != NULL) {
+      if (!type_eq(param1->type, param2->type)) {
+        return 0;
+      }
+
+      param1 = param1->next;
+      param2 = param2->next;
+    }
+
+    // check that both are null
+    return param1 == param2;
+}
+
+// returns 1 if two types are equivalent
 int type_eq(struct Type *l, struct Type *r) {
   if (l->kind != r->kind) {
     return 0;
@@ -40,26 +62,7 @@ int type_eq(struct Type *l, struct Type *r) {
     return l->struct_type == r->struct_type;
 
   case T_FUNC:
-    // check return type is same and parameters are same
-
-    if (!type_eq(l->func_sig->ret, r->func_sig->ret)) {
-      return 0;
-    }
-
-    struct Param *param1 = l->func_sig->params;
-    struct Param *param2 = r->func_sig->params;
-
-    while (param1 != NULL && param2 != NULL) {
-      if (!type_eq(param1->type, param2->type)) {
-        return 0;
-      }
-
-      param1 = param1->next;
-      param2 = param2->next;
-    }
-
-    // check that both are null
-    return param1 == param2;
+    return compare_func_sig(l->func_sig, r->func_sig);
   }
 
   FAIL;
@@ -256,7 +259,6 @@ void free_func_sig(struct FuncSig *sig) {
 
 void free_type(struct Type *type) {
   if (type->istypedef) {
-    free(type);
     return;
   }
 

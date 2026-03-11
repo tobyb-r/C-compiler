@@ -48,4 +48,6 @@ void free_func_sig(struct FuncSig *sig);
 
 void free_type(struct Type *type);
 
+int compare_func_sig(struct FuncSig *sig1, struct FuncSig *sig2);
+
 #endif

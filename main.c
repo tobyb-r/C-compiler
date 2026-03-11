@@ -1,9 +1,8 @@
 #include "fail.h"
 #include "lexer.h"
 #include "parser.h"
-#include "ast.h"
 #include "symbols.h"
-#include "types.h"
+#include "ast.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,28 +21,15 @@ int main(int argc, char **argv) {
     stream = stdin;
   }
 
-  // parse();
+  parse();
 
-  // debug_symbols();
+  debug_symbols();
 
-  // printf("\nToken x is: \n  ");
-  // debug_symbol(lookup_symbol("x"));
-  // printf("Token y is: \n  ");
-  // debug_symbol(lookup_symbol("y"));
-
-  struct Type int_type = {.kind=T_INT};
-  struct Var x_var = {.name="x", .type=&int_type};
-  struct Var y_var = {.name="y", .type=&int_type};
-
-  struct Symbol *x = add_symbol("x");
-  *x = (struct Symbol){.kind=S_VAR, .var=&x_var};
-
-  struct Symbol *y = add_symbol("y");
-  *y = (struct Symbol){.kind=S_VAR, .var=&y_var};
-
-  setup_lexer();
-
-  struct Expr *expr = match_expr();
-
-  debug_expr(expr);
+  printf("\nToken x is: \n  ");
+  debug_symbol(lookup_symbol("x"));
+  printf("Token y is: \n  ");
+  debug_symbol(lookup_symbol("y"));
+  printf("Main function is:\n");
+  debug_symbol(lookup_symbol("main"));
+  debug_block_stmt(lookup_symbol("main")->func->stmt);
 }

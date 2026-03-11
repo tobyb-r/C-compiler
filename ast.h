@@ -53,12 +53,14 @@ enum BinOp {
 
 struct Expr {
   // TODO: struct/array initializers, constants, field of struct
-  enum { E_CONST, E_VAR, E_FUNC, E_UNOP, E_BINOP, E_CALL } kind;
+  enum { E_CONST, E_GLOBAL, E_VAR, E_FUNC, E_UNOP, E_BINOP, E_CALL } kind;
 
   union {
     struct Constant cnst;
 
     struct Var *var;
+
+    struct Global *global;
 
     struct Func *func;
 
@@ -90,7 +92,7 @@ struct Args {
 };
 
 struct Stmt {
-  enum { S_EXPR, S_IF, S_FOR, S_WHILE, S_RETURN } kind;
+  enum { S_BLOCK, S_EXPR, S_IF, S_FOR, S_WHILE, S_RETURN } kind;
 
   union {
     struct Expr *expr;
@@ -98,30 +100,32 @@ struct Stmt {
     struct {
       struct Expr *init;
       struct Expr *iter;
-      struct Expr *test;
-      struct BlockStmt *block;
+      struct Expr *cond;
+      struct Stmt *block;
     } for_stmt;
 
     struct {
-      struct Expr *test;
-      struct BlockStmt *if_block;
-      struct BlockStmt *else_block;
+      struct Expr *cond;
+      struct Stmt *if_block;
+      struct Stmt *else_block;
     } if_stmt;
 
     struct {
-      struct Expr *test;
-      struct BlockStmt *block;
+      struct Expr *cond;
+      struct Stmt *block;
     } while_stmt;
 
-    struct Expr *ret;
+    struct BlockStmt *block;
   };
 };
 
 struct BlockStmt {
-  struct Stmt stmt;
+  struct Stmt *stmt;
   struct BlockStmt *next;
 };
 
 void debug_expr(struct Expr *expr);
+void debug_block_stmt(struct BlockStmt *expr);
+void debug_stmt(struct Stmt *stmt);
 
 #endif

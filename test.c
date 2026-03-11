@@ -43,7 +43,7 @@ int x(int (*)());
 
 void buffalo(int);
 
-int brother(int y()) {
+int main(int argc, char **argv) {
   void (*a)(int);
   int b;
 
@@ -51,7 +51,9 @@ int brother(int y()) {
 
   int *other = &minusone;
 
-  if (1) {
+  int i;
+
+  for (i = 0;(i = 0);i = 0) {
     struct a {
       int y;
     } q;
@@ -62,10 +64,11 @@ int brother(int y()) {
   return 0;
 }
 
-int main() {
+int brother() {
   // int a = y[10]('c');
   struct a y;
   // int b = (*z('c'))[10];
+  return 0;
 }
 
-int main();
+int brother();

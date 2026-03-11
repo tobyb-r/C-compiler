@@ -4,9 +4,13 @@
 struct Var {
   char *name;
   struct Type *type;
+  // TODO function stack position information
+  // some variables might not need to be put on stack
+  // maybe generate this during register allocation
 };
 
 struct Global {
+  char *name;
   struct Type *type;
   int complete;
   // initialization value
@@ -74,8 +78,15 @@ struct Func {
   struct FuncSig *sig;
   struct BlockStmt *stmt;
   int complete;
-  // stack size, layout
+  struct VarList *vars;
 };
+
+struct VarList {
+  struct Var *var;
+  struct VarList *next;
+};
+
+extern struct Func *cur_func;
 
 void new_scope();
 void exit_scope();
@@ -88,6 +99,7 @@ struct Symbol *add_symbol(char *name);
 struct Struct *add_struct(char *name);
 struct Func *add_func(char *name);
 struct Global *add_global(char *name);
+struct Var *add_local(char *name, struct Type *type);
 
 struct Symbol *lookup_symbol(char *name);
 struct Struct *lookup_struct(char *name);

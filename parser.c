@@ -10,7 +10,6 @@
 #include "types.h"
 
 // TODO:
-// statements/expressions
 // have to make global variables and initializers work
 // - keep track of global variables
 // - initializers are expressions we eval at codegen
@@ -18,11 +17,6 @@
 // TODO:
 // type qualifiers
 // declaration lists
-
-// TODO:
-// make shadowing work correctly
-// to do this i have to change the interface for adding symbols
-// idc
 
 // parse token stream into abstract syntax tree
 // we parse functions into symbols and asts
@@ -332,6 +326,8 @@ struct Type match_type() {
   return (struct Type){0};
 }
 
+struct BlockStmt *match_block_stmt();
+
 // parse outer declaration
 void match_outer_dec() {
   // external declarations ::=
@@ -421,7 +417,6 @@ void match_outer_dec() {
   if (dec.type->kind == T_FUNC) {
     struct Func func = {0};
 
-    func.name = dec.identifier;
     func.sig = dec.type->func_sig;
 
     if (!dec.type->istypedef)
@@ -431,29 +426,6 @@ void match_outer_dec() {
 
     if (cur_token.kind == '{') {
       func.complete = 1;
-      // function is defined here
-      // new_scope();
-      // add function parameters to scope
-      // struct BlockStmt *ast = match_block_stmt();
-      // exit_scope();
-
-      // TODO for now skip definition
-      int depth = 0;
-
-      while (depth >= 0) {
-        switch (read_token().kind) {
-        case '{':
-          depth++;
-          continue;
-        case '}':
-          depth--;
-          continue;
-        default:
-          continue;
-        }
-      }
-
-      eat_token('}');
     } else {
       eat_token(';');
     }
@@ -461,30 +433,12 @@ void match_outer_dec() {
     struct Func *def = add_func(dec.identifier);
 
     if (def->complete && func.complete) {
-      printf("Redefining function %s\n", dec.identifier);
+      printf("Semantic error: Redefining function %s\n", dec.identifier);
       FAIL;
     }
 
     if (def->sig) {
-      if (!type_eq(def->sig->ret, func.sig->ret)) {
-        goto ne;
-      }
-
-      struct Param *param1 = def->sig->params;
-      struct Param *param2 = func.sig->params;
-
-      while (param1 != NULL && param2 != NULL) {
-        if (!type_eq(param1->type, param2->type)) {
-          goto ne;
-        }
-
-        param1 = param1->next;
-        param2 = param2->next;
-      }
-
-      // check that both are null
-      if (param1 != param2) {
-      ne:
+      if (!compare_func_sig(def->sig, func.sig)) {
         printf(
             "Semantic error: redefining function with different signature\n");
         line = _line;
@@ -499,7 +453,23 @@ void match_outer_dec() {
     }
 
     if (func.complete) {
-      def->stmt = func.stmt;
+      cur_func = NULL;
+      new_scope();
+
+      // add parameters to symbol table
+      struct Param *cur = func.sig->params;
+
+      while (cur != NULL) {
+        add_local(cur->name, cur->type);
+
+        cur = cur->next;
+      }
+
+      // match inside function
+      def->stmt = match_block_stmt();
+
+      // clean up
+      exit_scope();
     }
   } else if (cur_token.kind == ';') {
     struct Global *global = add_global(dec.identifier);
@@ -591,27 +561,6 @@ struct Stmt *match_inner_dec() {
   return NULL;
 }
 
-struct Expr *match_primary_rec();
-
-struct Expr *match_primary_expr() {
-  // primary ::=
-  //   | var-name
-  //   | constant
-  //   | ( expr )
-  //   | `prefix-op` primary
-  //   | primary `postfix-op`
-  //
-  // indexing and calling functions are postfix operators
-  // '*' and '&' are prefix operators
-  // postfix operators have higher precedence than prefix operators
-  //
-  // parsed like declarators
-
-  struct Expr *expr = match_primary_rec();
-
-  return expr;
-}
-
 // prefix operators
 // TODO:  ++ -- & + - ~ !
 enum UnOp unoperators[256] = {
@@ -619,8 +568,49 @@ enum UnOp unoperators[256] = {
     [STAR] = O_DEREF,
 };
 
+struct Args *match_args() {
+  eat_token('(');
+
+  struct Args *args = NULL;
+  struct Args **tail = &args;
+
+  while (cur_token.kind != ')') {
+    struct Expr *expr = match_expr();
+
+    *tail = malloc(sizeof(**tail));
+
+    (*tail)->expr = expr;
+    (*tail)->next = NULL;
+
+    tail = &(*tail)->next;
+
+    if (cur_token.kind == ',') {
+      eat_token(',');
+    } else if (cur_token.kind != ')') {
+      printf("Syntax error: Expected ',' or ')' in argument list\n");
+      FAIL;
+    }
+  }
+
+  eat_token(')');
+
+  return args;
+}
+
 // similar to match_dec_rec
-struct Expr *match_primary_rec() {
+// primary ::=
+//   | var-name
+//   | constant
+//   | ( expr )
+//   | `prefix-op` primary
+//   | primary `postfix-op`
+//
+// indexing and calling functions are postfix operators
+// '*' and '&' are prefix operators
+// postfix operators have higher precedence than prefix operators
+//
+// parsed like declarators
+struct Expr *match_primary_expr() {
   struct Expr *expr = malloc(sizeof(*expr));
 
   // prefix operators
@@ -629,6 +619,7 @@ struct Expr *match_primary_rec() {
     expr->unop.op = unoperators[cur_token.kind];
     expr->unop.expr = malloc(sizeof(*expr->unop.expr));
     expr = expr->unop.expr;
+    read_token();
   }
 
   // primary
@@ -642,8 +633,16 @@ struct Expr *match_primary_rec() {
     break;
   case IDENT:;
     struct Symbol *sym = lookup_symbol(cur_token.identifier);
+
+    if (!sym) {
+      printf("Undefined symbol \"%s\" in expression\n", cur_token.identifier);
+      FAIL;
+    }
+
     if (sym->kind == S_VAR) {
       *expr = (struct Expr){.kind = E_VAR, .var = sym->var};
+    } else if (sym->kind == S_GLOBAL) {
+      *expr = (struct Expr){.kind = E_GLOBAL, .global = sym->global};
     } else if (sym->kind == S_FUNC) {
       *expr = (struct Expr){.kind = E_FUNC, .func = sym->func};
     } else {
@@ -668,9 +667,16 @@ struct Expr *match_primary_rec() {
   // TODO: ++ -- -> .
   while (1) {
     if (cur_token.kind == '[') {
-      FAIL; // TODO
+      eat_token('[');
+      struct Expr *new = malloc(sizeof(*new));
+      *new = (struct Expr){.kind = E_BINOP,
+                           .binop = {O_INDEX, expr, match_expr()}};
+      expr = new;
+      eat_token(']');
     } else if (cur_token.kind == '(') {
-      FAIL; // TODO
+      struct Expr *new = malloc(sizeof(*new));
+      *new = (struct Expr){.kind = E_CALL, .call = {expr, match_args()}};
+      expr = new;
     } else {
       break;
     }
@@ -773,8 +779,8 @@ struct Expr *match_expr_op(struct Expr *lhs, int precedence) {
 
   if (cur_token.kind == ASSIGN) {
     eat_token(ASSIGN);
-    struct Expr *new = malloc(sizeof(*new));
 
+    struct Expr *new = malloc(sizeof(*new));
     struct Expr *rhs = match_expr();
 
     *new = (struct Expr){.kind = E_BINOP, .binop = {O_ASSIGN, lhs, rhs}};
@@ -794,7 +800,7 @@ struct Expr *match_expr() {
   //   | lvalue = expr
   //     - special case of `op`
   //     - this is the only right assoc operator
-  //     - for assignment we parse the whole rhs of = as an expr ignoring prec
+  //     - parse everything right of = as the rhs expr
   // can do operator precedence parsing
 
   struct Expr *primary = match_primary_expr();
@@ -805,7 +811,10 @@ struct Expr *match_expr() {
 
 // probably need different functions and structs for int/string
 // const initializers for structs/arrays?
-void *match_constant() { return NULL; }
+void *match_constructor() {
+  FAIL;
+  return NULL;
+}
 
 struct Stmt *match_stmt() {
   // stmt ::=
@@ -817,35 +826,127 @@ struct Stmt *match_stmt() {
   //     - FIRST = var name, function name, unary operator
   //   | assignment operator
 
+  struct Stmt stmt = {0};
+
   switch (cur_token.kind) {
-  case SEMICOLON:
+  case ';':
+    eat_token(';');
     return NULL;
-  // blocks
+
+  // structured blocks
   case FOR:
+    stmt.kind = S_FOR;
+
     // match for
     eat_token(FOR);
-    return NULL;
+
+    // match optional parts
+    eat_token('(');
+
+    // TODO: this can be a declaration
+
+    if (cur_token.kind != ';')
+      stmt.for_stmt.init = match_expr();
+
+    eat_token(';');
+
+    if (cur_token.kind != ';')
+      stmt.for_stmt.cond = match_expr();
+
+    eat_token(';');
+
+    if (cur_token.kind != ';')
+      stmt.for_stmt.iter = match_expr();
+
+    eat_token(')');
+
+    stmt.for_stmt.block = match_stmt();
+
+    goto complete;
+
   case WHILE:
-    // match for
+    stmt.kind = S_WHILE;
+
+    // match while
     eat_token(WHILE);
-    return NULL;
+
+    eat_token('(');
+    stmt.while_stmt.cond = match_expr();
+    eat_token(')');
+
+    stmt.while_stmt.block = match_stmt();
+
+    goto complete;
   case IF:
-    // match for
+    stmt.kind = S_IF;
+
+    // match if
     eat_token(IF);
-    return NULL;
+
+    eat_token('(');
+    stmt.if_stmt.cond = match_expr();
+    eat_token(')');
+
+    stmt.if_stmt.if_block = match_stmt();
+
+    if (read_token().kind == ELSE) {
+      eat_token(ELSE);
+      stmt.if_stmt.else_block = match_stmt();
+    }
+
+    goto complete;
+
+  case L_BRACE:
+    stmt.kind = S_BLOCK;
+    stmt.block = match_block_stmt();
+
+    goto complete;
 
   // type - declaration
   case INT_TYPE:
   case CHAR_TYPE:
   case VOID_TYPE:
   case FLOAT_TYPE:
+  case STRUCT:
+  case UNION:
+  case ENUM:
     goto dec;
 
+  // brackets or unary operators
+  // TODO ! ~
+  case L_PAREN:
+  case AMP:
+  case STAR:
+  case PLUS:
+  case MINUS:
+    goto expr;
+
+  // jump statements
+  // TODO continue goto
+  case BREAK:
+    FAIL;
+
+  case RETURN:
+    eat_token(RETURN);
+    stmt.kind = S_RETURN;
+
+    if (cur_token.kind != ';')
+      stmt.expr = match_expr();
+
+    eat_token(';');
+
+    goto complete;
+
+  case TYPEDEF:
+    FAIL; // unimplemented
+
   case IDENT:;
-    // match if it is type or not
+    // check if this is type or not
+    // TODO labels
     struct Symbol *symbol = lookup_symbol(cur_token.identifier);
 
     if (!symbol) {
+      // TODO this can be a label
       printf("Semantic error: undefined symbol %s\n", cur_token.identifier);
       FAIL;
     }
@@ -861,42 +962,80 @@ struct Stmt *match_stmt() {
     FAIL;
   }
 
+  // should have jumped out
+  FAIL;
+
 dec:;
   struct Type type = match_type();
   struct Dec dec = match_declarator(type);
-  // add to scope
+
+  struct Var *var = add_local(dec.identifier, dec.type);
 
   if (cur_token.kind == '=') {
-    // return assignment expression
-    return NULL;
+    eat_token('=');
+    struct Expr *rval = match_expr();
+    struct Expr *assign = malloc(sizeof(*assign));
+    assign->kind = E_BINOP;
+    assign->binop.op = O_ASSIGN;
+    assign->binop.r = rval;
+    assign->binop.l = malloc(sizeof(*assign->binop.l));
+    assign->binop.l->kind = E_VAR;
+    assign->binop.l->var = var;
+
+    stmt.kind = S_EXPR;
+    stmt.expr = assign;
+
+    eat_token(';');
+    goto complete;
   } else {
     eat_token(';');
     return NULL;
   }
 
 expr:;
+  stmt.kind = S_EXPR;
+
   struct Expr *expr = match_expr();
 
-  struct Stmt *stmt = malloc(sizeof(*stmt));
-  *stmt = (struct Stmt){.kind = S_EXPR, .expr = expr};
+  stmt.expr = expr;
 
-  return stmt;
+  eat_token(';');
+  goto complete;
+
+complete:;
+  struct Stmt *stmt_ptr = malloc(sizeof(*stmt_ptr));
+  *stmt_ptr = stmt;
+
+  return stmt_ptr;
 }
 
 struct BlockStmt *match_block_stmt() {
-  // compound_stmt ::= { (stmt;)* }
-
+  new_scope();
   eat_token('{');
 
-  while (cur_token.kind != '{') {
-    read_token();
-    // struct Stmt *stmt = match_stmt();
-    // add stmt to ast
+  struct BlockStmt *block = NULL;
+  struct BlockStmt **tail = &block;
+
+  while (cur_token.kind != '}') {
+    struct Stmt *stmt;
+
+    stmt = match_stmt();
+
+    if (stmt == NULL)
+      continue;
+
+    *tail = malloc(sizeof(**tail));
+
+    (*tail)->stmt = stmt;
+    (*tail)->next = NULL;
+
+    tail = &(*tail)->next;
   }
 
   eat_token('}');
 
-  return NULL;
+  exit_scope();
+  return block;
 }
 
 // parse start_symbol
